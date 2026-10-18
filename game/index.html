@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>💩 피하기 게임</title>
+<title>⭐ 피하기 게임</title>
 <style>
   body { margin: 0; background: #1e1b4b; color: #fff; font-family: "Malgun Gothic", sans-serif;
          display: flex; flex-direction: column; align-items: center; }
@@ -16,7 +16,7 @@
 </style>
 </head>
 <body>
-<h1>💩 피하기 게임</h1>
+<h1>⭐ 피하기 게임</h1>
 <div id="info">점수: <b id="score">0</b> · 최고 점수: <b id="best">0</b></div>
 <canvas id="game" width="400" height="560"></canvas>
 <div class="btns"><button id="leftBtn">◀</button><button id="rightBtn">▶</button></div>
@@ -24,13 +24,13 @@
 
 <script>
 // ===== 게임 숫자 모음: 여기 숫자만 바꿔도 게임이 달라져요! =====
-const 시작_떨어지는_속도 = 2;      // 💩가 처음 떨어지는 빠르기 (클수록 빨라요)
+const 시작_떨어지는_속도 = 2;      // ⭐이 처음 떨어지는 빠르기 (클수록 빨라요)
 const 속도_증가량 = 0.002;          // 시간이 지날수록 빨라지는 정도
-const 똥_크기 = 36;                 // 💩 크기 (픽셀)
-const 똥_나오는_간격 = 40;          // 💩가 나오는 간격 (작을수록 많이 나와요)
+const 별_크기 = 36;                 // ⭐ 크기 (픽셀)
+const 별_나오는_간격 = 40;          // ⭐이 나오는 간격 (작을수록 많이 나와요)
 const 내_캐릭터_크기 = 40;          // 🙂 크기 (픽셀)
 const 내_이동_속도 = 6;             // 내가 좌우로 움직이는 빠르기
-const 점수_올라가는_양 = 1;         // 💩 하나를 피할 때마다 올라가는 점수
+const 점수_올라가는_양 = 1;         // ⭐ 하나를 피할 때마다 올라가는 점수
 // ===============================================================
 
 const canvas = document.getElementById("game");
@@ -80,18 +80,18 @@ function loop() {
   if (keys.right) player.x += 내_이동_속도;
   player.x = Math.max(내_캐릭터_크기 / 2, Math.min(canvas.width - 내_캐릭터_크기 / 2, player.x));
 
-  if (frame % 똥_나오는_간격 === 0) {
-    poops.push({ x: 똥_크기 / 2 + Math.random() * (canvas.width - 똥_크기), y: -똥_크기 });
+  if (frame % 별_나오는_간격 === 0) {
+    poops.push({ x: 별_크기 / 2 + Math.random() * (canvas.width - 별_크기), y: -별_크기 });
   }
   for (const p of poops) p.y += speed;
 
   // 부딪혔는지 확인 (가운데 사이 거리가 두 크기의 절반보다 가까우면 충돌)
   for (const p of poops) {
     const dx = p.x - player.x, dy = p.y - player.y;
-    if (Math.hypot(dx, dy) < (똥_크기 + 내_캐릭터_크기) / 2 * 0.8) { gameOver(); return; }
+    if (Math.hypot(dx, dy) < (별_크기 + 내_캐릭터_크기) / 2 * 0.8) { gameOver(); return; }
   }
-  // 바닥까지 떨어진 💩는 피한 것 → 점수
-  const 남은 = poops.filter(p => p.y < canvas.height + 똥_크기);
+  // 바닥까지 떨어진 ⭐은 피한 것 → 점수
+  const 남은 = poops.filter(p => p.y < canvas.height + 별_크기);
   score += (poops.length - 남은.length) * 점수_올라가는_양;
   poops = 남은;
   scoreEl.textContent = score;
@@ -103,8 +103,8 @@ function loop() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.font = 똥_크기 + "px serif";
-  for (const p of poops) ctx.fillText("💩", p.x, p.y);
+  ctx.font = 별_크기 + "px serif";
+  for (const p of poops) ctx.fillText("⭐", p.x, p.y);
   ctx.font = 내_캐릭터_크기 + "px serif";
   ctx.fillText("🙂", player.x, player.y);
 }
@@ -112,7 +112,7 @@ function draw() {
 function startScreen() {
   reset(); draw();
   ctx.fillStyle = "#1e1b4b"; ctx.textAlign = "center";
-  ctx.font = "bold 30px Malgun Gothic"; ctx.fillText("💩를 피하세요!", canvas.width / 2, 240);
+  ctx.font = "bold 30px Malgun Gothic"; ctx.fillText("⭐을 피하세요!", canvas.width / 2, 240);
   ctx.font = "18px Malgun Gothic"; ctx.fillText("스페이스바나 화면을 누르면 시작", canvas.width / 2, 290);
 }
 
