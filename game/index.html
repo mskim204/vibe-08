@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💩 피하기 게임</title>
+<style>
+  body { margin: 0; background: #1e1b4b; color: #fff; font-family: "Malgun Gothic", sans-serif;
+         display: flex; flex-direction: column; align-items: center; }
+  h1 { margin: 12px 0 4px; font-size: 24px; }
+  #info { margin-bottom: 8px; font-size: 18px; }
+  canvas { background: #eef2ff; border-radius: 12px; touch-action: none; max-width: 96vw; }
+  #help { margin: 8px; font-size: 14px; color: #c7d2fe; text-align: center; }
+  .btns { display: flex; gap: 12px; margin-top: 8px; }
+  .btns button { font-size: 28px; width: 90px; height: 60px; border: none; border-radius: 12px; }
+</style>
+</head>
+<body>
+<h1>💩 피하기 게임</h1>
+<div id="info">점수: <b id="score">0</b> · 최고 점수: <b id="best">0</b></div>
+<canvas id="game" width="400" height="560"></canvas>
+<div class="btns"><button id="leftBtn">◀</button><button id="rightBtn">▶</button></div>
+<div id="help">← → 방향키(폰은 아래 버튼)로 피하세요. 스페이스바나 화면을 누르면 시작!</div>
+
+<script>
+// ===== 게임 숫자 모음: 여기 숫자만 바꿔도 게임이 달라져요! =====
+const 시작_떨어지는_속도 = 2;      // 💩가 처음 떨어지는 빠르기 (클수록 빨라요)
+const 속도_증가량 = 0.002;          // 시간이 지날수록 빨라지는 정도
+const 똥_크기 = 36;                 // 💩 크기 (픽셀)
+const 똥_나오는_간격 = 40;          // 💩가 나오는 간격 (작을수록 많이 나와요)
+const 내_캐릭터_크기 = 40;          // 🙂 크기 (픽셀)
+const 내_이동_속도 = 6;             // 내가 좌우로 움직이는 빠르기
+const 점수_올라가는_양 = 1;         // 💩 하나를 피할 때마다 올라가는 점수
+// ===============================================================
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const bestEl = document.getElementById("best");
+
+let 최고점수 = 0;
+try { 최고점수 = Number(localStorage.getItem("poop_best") || 0); } catch (e) {}  // 내 브라우저 금고에서 꺼내기
+bestEl.textContent = 최고점수;
+
+let player, poops, score, speed, frame, running, keys = {};
+
+function reset() {
+  player = { x: canvas.width / 2, y: canvas.height - 50 };
+  poops = []; score = 0; speed = 시작_떨어지는_속도; frame = 0;
+  scoreEl.textContent = 0;
+}
+
+function start() {
+  if (running) return;
+  reset(); running = true;
+  requestAnimationFrame(loop);
+}
+
+function gameOver() {
+  running = false;
+  if (score > 최고점수) {
+    최고점수 = score;
+    try { localStorage.setItem("poop_best", 최고점수); } catch (e) {}
+    bestEl.textContent = 최고점수;
+  }
+  draw();
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+  ctx.font = "bold 40px Malgun Gothic"; ctx.fillText("게임 오버!", canvas.width / 2, 240);
+  ctx.font = "24px Malgun Gothic"; ctx.fillText("점수: " + score, canvas.width / 2, 290);
+  ctx.font = "18px Malgun Gothic"; ctx.fillText("스페이스바나 화면을 누르면 다시 시작", canvas.width / 2, 340);
+}
+
+function loop() {
+  if (!running) return;
+  frame++;
+  speed += 속도_증가량;
+  if (keys.left) player.x -= 내_이동_속도;
+  if (keys.right) player.x += 내_이동_속도;
+  player.x = Math.max(내_캐릭터_크기 / 2, Math.min(canvas.width - 내_캐릭터_크기 / 2, player.x));
+
+  if (frame % 똥_나오는_간격 === 0) {
+    poops.push({ x: 똥_크기 / 2 + Math.random() * (canvas.width - 똥_크기), y: -똥_크기 });
+  }
+  for (const p of poops) p.y += speed;
+
+  // 부딪혔는지 확인 (가운데 사이 거리가 두 크기의 절반보다 가까우면 충돌)
+  for (const p of poops) {
+    const dx = p.x - player.x, dy = p.y - player.y;
+    if (Math.hypot(dx, dy) < (똥_크기 + 내_캐릭터_크기) / 2 * 0.8) { gameOver(); return; }
+  }
+  // 바닥까지 떨어진 💩는 피한 것 → 점수
+  const 남은 = poops.filter(p => p.y < canvas.height + 똥_크기);
+  score += (poops.length - 남은.length) * 점수_올라가는_양;
+  poops = 남은;
+  scoreEl.textContent = score;
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = 똥_크기 + "px serif";
+  for (const p of poops) ctx.fillText("💩", p.x, p.y);
+  ctx.font = 내_캐릭터_크기 + "px serif";
+  ctx.fillText("🙂", player.x, player.y);
+}
+
+function startScreen() {
+  reset(); draw();
+  ctx.fillStyle = "#1e1b4b"; ctx.textAlign = "center";
+  ctx.font = "bold 30px Malgun Gothic"; ctx.fillText("💩를 피하세요!", canvas.width / 2, 240);
+  ctx.font = "18px Malgun Gothic"; ctx.fillText("스페이스바나 화면을 누르면 시작", canvas.width / 2, 290);
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") { keys.left = true; e.preventDefault(); }
+  if (e.key === "ArrowRight") { keys.right = true; e.preventDefault(); }
+  if (e.key === " ") { start(); e.preventDefault(); }
+});
+document.addEventListener("keyup", e => {
+  if (e.key === "ArrowLeft") keys.left = false;
+  if (e.key === "ArrowRight") keys.right = false;
+});
+canvas.addEventListener("pointerdown", start);
+// 폰용 버튼: 누르고 있는 동안 움직이기
+for (const [id, k] of [["leftBtn", "left"], ["rightBtn", "right"]]) {
+  const b = document.getElementById(id);
+  b.addEventListener("pointerdown", e => { keys[k] = true; start(); e.preventDefault(); });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, () => keys[k] = false);
+}
+
+startScreen();
+</script>
+</body>
+</html>
