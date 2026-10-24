@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>폰 센서</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: sans-serif;
+    background: #111827;
+    color: #fff;
+    text-align: center;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+  }
+  h1 { margin: 0 0 8px; font-size: 24px; }
+  .box { background: #1f2937; border-radius: 16px; padding: 12px; }
+  .label { font-size: 20px; color: #9ca3af; }
+  .num {
+    font-size: 22vw;
+    font-weight: bold;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  #shake { color: #facc15; }
+  #start {
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 14px;
+    margin: 0 auto;
+  }
+  #msg { color: #f87171; font-size: 18px; min-height: 1em; }
+  a { color: #9ca3af; }
+</style>
+</head>
+<body>
+<h1>📱 폰 센서</h1>
+
+<div class="box">
+  <div class="label">앞뒤 기울기 (beta)</div>
+  <div class="num" id="beta">0</div>
+</div>
+<div class="box">
+  <div class="label">좌우 기울기 (gamma)</div>
+  <div class="num" id="gamma">0</div>
+</div>
+<div class="box">
+  <div class="label">흔들림 세기</div>
+  <div class="num" id="shake">0</div>
+</div>
+
+<button id="start">시작</button>
+<div id="msg"></div>
+<a href="maze.html" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#16a34a;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🎮 미로 게임</a>
+<a href="maze.html?level=2" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#b45309;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🕳️ 미로 레벨 2</a>
+<a href="shake.html" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#db2777;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">💪 흔들기 대결</a>
+<a href="../">← 처음으로</a>
+
+<script>
+const betaEl = document.getElementById('beta');
+const gammaEl = document.getElementById('gamma');
+const shakeEl = document.getElementById('shake');
+const msgEl = document.getElementById('msg');
+const startBtn = document.getElementById('start');
+
+let shake = 0;
+
+function onOrientation(e) {
+  if (e.beta != null) betaEl.textContent = Math.round(e.beta);
+  if (e.gamma != null) gammaEl.textContent = Math.round(e.gamma);
+}
+
+function onMotion(e) {
+  // 중력을 뺀 가속도가 있으면 그걸 쓰고, 없으면 중력 포함 값에서 9.8을 뺀다
+  let a = e.acceleration;
+  let size;
+  if (a && a.x != null) {
+    size = Math.hypot(a.x, a.y, a.z);
+  } else {
+    a = e.accelerationIncludingGravity;
+    if (!a || a.x == null) return;
+    size = Math.abs(Math.hypot(a.x, a.y, a.z) - 9.8);
+  }
+  // 숫자가 너무 튀지 않게 부드럽게
+  shake = shake * 0.8 + size * 0.2;
+  shakeEl.textContent = Math.round(shake * 10);
+}
+
+async function askPermission(Ev) {
+  // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
+  if (Ev && typeof Ev.requestPermission === 'function') {
+    return (await Ev.requestPermission()) !== 'denied';
+  }
+  return true;
+}
+
+startBtn.addEventListener('click', async () => {
+  msgEl.textContent = '';
+  try {
+    const okMotion = await askPermission(window.DeviceMotionEvent);
+    const okOrient = await askPermission(window.DeviceOrientationEvent);
+    if (!okMotion || !okOrient) {
+      msgEl.textContent = '센서 권한이 거부됐어요. 설정에서 허용해 주세요.';
+      return;
+    }
+  } catch (err) {
+    msgEl.textContent = '권한을 물어볼 수 없어요. https 주소로 열어 주세요.';
+    return;
+  }
+  window.addEventListener('deviceorientation', onOrientation);
+  window.addEventListener('devicemotion', onMotion);
+  startBtn.textContent = '센서 켜짐 ✅';
+  startBtn.disabled = true;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>흔들기 대결</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: sans-serif;
+    background: #111827;
+    color: #fff;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .top a { color: #9ca3af; font-size: 16px; text-decoration: none; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #1f2937; border-radius: 12px; padding: 6px; }
+  .stat .label { font-size: 14px; color: #9ca3af; }
+  .stat .val { font-size: 32px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  #best { color: #facc15; }
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  #count {
+    font-size: 40vw;
+    font-weight: bold;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.08s;
+  }
+  #count.pop { transform: scale(1.15); color: #facc15; }
+  #unit { font-size: 22px; color: #9ca3af; }
+  .bar { height: 14px; background: #1f2937; border-radius: 7px; overflow: hidden; }
+  #fill { height: 100%; width: 100%; background: #4f46e5; }
+  button {
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 14px;
+  }
+  #msg { font-size: 20px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="./">← 센서</a>
+  <b>💪 흔들기 대결</b>
+  <span style="width:48px"></span>
+</div>
+<div class="stats">
+  <div class="stat"><div class="label">남은 시간</div><div class="val" id="time">10.0</div></div>
+  <div class="stat"><div class="label">최고 기록</div><div class="val" id="best">-</div></div>
+</div>
+<div class="bar"><div id="fill"></div></div>
+<div id="main">
+  <div id="count">0</div>
+  <div id="unit">번</div>
+</div>
+<div id="msg">10초 동안 폰을 최대한 많이 흔들어요! (폰을 꽉 잡고!)</div>
+<button id="start">시작</button>
+
+<script>
+const GAME_SEC = 10;
+const HIGH = 12;      // 이보다 세게 움직이면 "흔들었다"
+const LOW = 5;        // 이보다 약해져야 다음 흔들기를 셀 준비
+const MIN_GAP = 120;  // 한 번 흔들 때 두 번 세지 않도록 (밀리초)
+
+const countEl = document.getElementById('count');
+const timeEl = document.getElementById('time');
+const bestEl = document.getElementById('best');
+const fillEl = document.getElementById('fill');
+const msgEl = document.getElementById('msg');
+const startBtn = document.getElementById('start');
+
+// ----- 기록 -----
+const BEST_KEY = 'shake-best';
+function loadBest() {
+  try { return parseInt(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; }
+}
+function saveBest(n) {
+  try { localStorage.setItem(BEST_KEY, String(n)); } catch (e) {}
+}
+let best = loadBest();
+function showBest() { bestEl.textContent = best ? best : '-'; }
+showBest();
+
+// ----- 흔들기 세기 -----
+let playing = false, count = 0, armed = true, lastShake = 0;
+let startTime = 0, sensorOn = false;
+
+function onMotion(e) {
+  if (!playing) return;
+  // 중력을 뺀 가속도가 있으면 그걸 쓰고, 없으면 중력 포함 값에서 9.8을 뺀다
+  let a = e.acceleration;
+  let size;
+  if (a && a.x != null) {
+    size = Math.hypot(a.x, a.y, a.z);
+  } else {
+    a = e.accelerationIncludingGravity;
+    if (!a || a.x == null) return;
+    size = Math.abs(Math.hypot(a.x, a.y, a.z) - 9.8);
+  }
+  const now = performance.now();
+  if (armed && size > HIGH && now - lastShake > MIN_GAP) {
+    count++;
+    armed = false;
+    lastShake = now;
+    countEl.textContent = count;
+    countEl.classList.add('pop');
+    setTimeout(() => countEl.classList.remove('pop'), 80);
+  } else if (size < LOW) {
+    armed = true;
+  }
+}
+
+// 컴퓨터에서 시험할 때는 스페이스바로 한 번씩 셀 수 있게
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && playing && !e.repeat) {
+    count++;
+    countEl.textContent = count;
+  }
+});
+
+// ----- 게임 진행 -----
+function loop(now) {
+  if (!playing) return;
+  const left = Math.max(0, GAME_SEC - (now - startTime) / 1000);
+  timeEl.textContent = left.toFixed(1);
+  fillEl.style.width = (left / GAME_SEC * 100) + '%';
+  if (left <= 0) { finish(); return; }
+  requestAnimationFrame(loop);
+}
+
+function finish() {
+  playing = false;
+  if (navigator.vibrate) try { navigator.vibrate(300); } catch (e) {}
+  if (count > best) {
+    best = count;
+    saveBest(best);
+    showBest();
+    msgEl.textContent = `🎉 ${count}번! 새 최고 기록!`;
+  } else {
+    msgEl.textContent = `⏰ 끝! ${count}번 흔들었어요`;
+  }
+  startBtn.textContent = '다시 하기';
+  startBtn.style.display = '';
+}
+
+function countdown(n) {
+  if (n === 0) {
+    countEl.textContent = '0';
+    unitEl.textContent = '번';
+    msgEl.textContent = '흔들어! 흔들어! 💪';
+    count = 0; armed = true; lastShake = 0;
+    playing = true;
+    startTime = performance.now();
+    requestAnimationFrame(loop);
+    return;
+  }
+  countEl.textContent = n;
+  setTimeout(() => countdown(n - 1), 1000);
+}
+
+const unitEl = document.getElementById('unit');
+
+async function askPermission(Ev) {
+  // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
+  if (Ev && typeof Ev.requestPermission === 'function') {
+    return (await Ev.requestPermission()) !== 'denied';
+  }
+  return true;
+}
+
+startBtn.addEventListener('click', async () => {
+  if (!sensorOn) {
+    try {
+      if (!(await askPermission(window.DeviceMotionEvent))) {
+        msgEl.textContent = '센서 권한이 거부됐어요. 설정에서 허용해 주세요.';
+        return;
+      }
+    } catch (e) {
+      msgEl.textContent = '권한을 물어볼 수 없어요. https 주소로 열어 주세요.';
+      return;
+    }
+    window.addEventListener('devicemotion', onMotion);
+    sensorOn = true;
+  }
+  startBtn.style.display = 'none';
+  timeEl.textContent = GAME_SEC.toFixed(1);
+  fillEl.style.width = '100%';
+  unitEl.textContent = '준비…';
+  msgEl.textContent = '폰을 꽉 잡고 준비!';
+  countdown(3);
+});
+</script>
+</body>
+</html>
