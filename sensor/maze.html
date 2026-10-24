@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>미로 게임</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: sans-serif;
+    background: #111827;
+    color: #fff;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .top a { color: #9ca3af; font-size: 16px; text-decoration: none; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #1f2937; border-radius: 12px; padding: 6px; }
+  .stat .label { font-size: 14px; color: #9ca3af; }
+  .stat .val { font-size: 32px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  #best { color: #facc15; }
+  #board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { border-radius: 8px; }
+  button {
+    padding: 16px 40px;
+    font-size: 26px;
+    font-weight: bold;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 14px;
+  }
+  #msg { font-size: 18px; min-height: 1.2em; }
+  /* 폰을 가로로 돌리면 게임을 가리고 세로로 돌려 달라고 안내 */
+  #rotate {
+    display: none;
+    position: fixed; inset: 0;
+    background: #111827;
+    align-items: center; justify-content: center;
+    font-size: 26px; padding: 16px;
+    z-index: 10;
+  }
+  @media (orientation: landscape) and (pointer: coarse) {
+    #rotate { display: flex; }
+  }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="./">← 센서</a>
+  <b>🎮 미로 게임</b>
+  <span style="width:48px"></span>
+</div>
+<div class="stats">
+  <div class="stat"><div class="label">시간</div><div class="val" id="time">0.00</div></div>
+  <div class="stat"><div class="label">최고 기록</div><div class="val" id="best">-</div></div>
+</div>
+<div id="board"><canvas id="cv"></canvas></div>
+<div id="msg">폰을 기울여서 🔴 공을 🏁 까지 굴려요!</div>
+<button id="start">시작</button>
+<div id="rotate">📱 폰을 세로로 돌려 주세요</div>
+
+<script>
+// ----- 미로 만들기 (항상 같은 미로가 나오도록 고정된 씨앗 사용) -----
+const CW = 7, CH = 10;               // 방 개수 (가로, 세로)
+const COLS = CW * 2 + 1, ROWS = CH * 2 + 1;
+
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeMaze(seed) {
+  const rand = rng(seed);
+  const g = [];
+  for (let y = 0; y < ROWS; y++) g.push(new Array(COLS).fill(1));
+  const seen = new Set();
+  const stack = [[0, 0]];
+  seen.add('0,0');
+  g[1][1] = 0;
+  while (stack.length) {
+    const [cx, cy] = stack[stack.length - 1];
+    const next = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => [cx + dx, cy + dy])
+      .filter(([x, y]) => x >= 0 && y >= 0 && x < CW && y < CH && !seen.has(x + ',' + y));
+    if (!next.length) { stack.pop(); continue; }
+    const [nx, ny] = next[Math.floor(rand() * next.length)];
+    g[cy * 2 + 1 + (ny - cy)][cx * 2 + 1 + (nx - cx)] = 0; // 사이 벽 뚫기
+    g[ny * 2 + 1][nx * 2 + 1] = 0;
+    seen.add(nx + ',' + ny);
+    stack.push([nx, ny]);
+  }
+  return g;
+}
+
+const grid = makeMaze(8);
+const START = { x: 1.5, y: 1.5 };
+const GOAL = { x: COLS - 2, y: ROWS - 2 };   // 골인 칸 (오른쪽 아래)
+const R = 0.32;                               // 공 반지름 (칸 크기 기준)
+
+// ----- 화면 -----
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const timeEl = document.getElementById('time');
+const bestEl = document.getElementById('best');
+const msgEl = document.getElementById('msg');
+const startBtn = document.getElementById('start');
+let tile = 20;
+
+function resize() {
+  const box = document.getElementById('board').getBoundingClientRect();
+  tile = Math.max(4, Math.floor(Math.min(box.width / COLS, box.height / ROWS)));
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = tile * COLS + 'px';
+  cv.style.height = tile * ROWS + 'px';
+  cv.width = tile * COLS * dpr;
+  cv.height = tile * ROWS * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillRect(0, 0, COLS * tile, ROWS * tile);
+  ctx.fillStyle = '#374151';
+  for (let y = 0; y < ROWS; y++)
+    for (let x = 0; x < COLS; x++)
+      if (grid[y][x]) ctx.fillRect(x * tile, y * tile, tile, tile);
+  ctx.fillStyle = '#86efac';
+  ctx.fillRect(GOAL.x * tile, GOAL.y * tile, tile, tile);
+  ctx.font = Math.floor(tile * 0.8) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🏁', (GOAL.x + 0.5) * tile, (GOAL.y + 0.5) * tile);
+  const bx = ball.x * tile, by = ball.y * tile, br = R * tile;
+  const grad = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, br * 0.1, bx, by, br);
+  grad.addColorStop(0, '#fca5a5');
+  grad.addColorStop(1, '#dc2626');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ----- 공 움직이기 -----
+const ball = { x: START.x, y: START.y, vx: 0, vy: 0 };
+const tilt = { x: 0, y: 0 };   // -1 ~ 1
+const keys = {};
+const MAX_DEG = 40;            // 이만큼 기울이면 최대 힘
+const ACCEL = 30;              // 칸/초²
+const MAX_SPEED = 12;          // 칸/초
+
+function hitsWall(x, y) {
+  for (let ty = Math.floor(y - R); ty <= Math.floor(y + R); ty++) {
+    for (let tx = Math.floor(x - R); tx <= Math.floor(x + R); tx++) {
+      if (ty < 0 || tx < 0 || ty >= ROWS || tx >= COLS || !grid[ty][tx]) continue;
+      const nx = Math.max(tx, Math.min(x, tx + 1));
+      const ny = Math.max(ty, Math.min(y, ty + 1));
+      if ((x - nx) ** 2 + (y - ny) ** 2 < R * R) return true;
+    }
+  }
+  return false;
+}
+
+function step(dt) {
+  let ax = tilt.x, ay = tilt.y;
+  // 컴퓨터에서 시험할 때는 방향키로도 움직일 수 있게
+  if (keys.ArrowLeft) ax = -1;
+  if (keys.ArrowRight) ax = 1;
+  if (keys.ArrowUp) ay = -1;
+  if (keys.ArrowDown) ay = 1;
+
+  ball.vx += ax * ACCEL * dt;
+  ball.vy += ay * ACCEL * dt;
+  const fr = Math.pow(0.3, dt);  // 마찰: 기울이지 않으면 서서히 멈춤
+  ball.vx *= fr;
+  ball.vy *= fr;
+  const sp = Math.hypot(ball.vx, ball.vy);
+  if (sp > MAX_SPEED) { ball.vx *= MAX_SPEED / sp; ball.vy *= MAX_SPEED / sp; }
+
+  // 벽을 뚫고 지나가지 않도록 잘게 나눠서 움직이기
+  const dx = ball.vx * dt, dy = ball.vy * dt;
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / (R * 0.5)));
+  for (let i = 0; i < n; i++) {
+    if (ball.vx) {
+      const nx = ball.x + dx / n;
+      if (hitsWall(nx, ball.y)) ball.vx = 0; else ball.x = nx;   // 벽에 부딪히면 멈춤
+    }
+    if (ball.vy) {
+      const ny = ball.y + dy / n;
+      if (hitsWall(ball.x, ny)) ball.vy = 0; else ball.y = ny;
+    }
+  }
+}
+
+// ----- 기록 -----
+const BEST_KEY = 'maze-best';
+function loadBest() {
+  try { return parseFloat(localStorage.getItem(BEST_KEY)) || null; } catch (e) { return null; }
+}
+function saveBest(t) {
+  try { localStorage.setItem(BEST_KEY, String(t)); } catch (e) {}
+}
+let best = loadBest();
+function showBest() { bestEl.textContent = best ? best.toFixed(2) : '-'; }
+showBest();
+
+// ----- 게임 진행 -----
+let playing = false, startTime = 0, last = 0;
+
+function loop(now) {
+  if (!playing) return;
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  step(dt);
+  const t = (now - startTime) / 1000;
+  timeEl.textContent = t.toFixed(2);
+  if (Math.floor(ball.x) === GOAL.x && Math.floor(ball.y) === GOAL.y) {
+    finish(t);
+  }
+  draw();
+  if (playing) requestAnimationFrame(loop);
+}
+
+function finish(t) {
+  playing = false;
+  timeEl.textContent = t.toFixed(2);
+  if (!best || t < best) {
+    best = t;
+    saveBest(t);
+    showBest();
+    msgEl.textContent = `🎉 골인! ${t.toFixed(2)}초 — 새 최고 기록!`;
+  } else {
+    msgEl.textContent = `🏁 골인! ${t.toFixed(2)}초`;
+  }
+  startBtn.textContent = '다시 하기';
+  startBtn.style.display = '';
+}
+
+function begin() {
+  Object.assign(ball, { x: START.x, y: START.y, vx: 0, vy: 0 });
+  msgEl.textContent = '폰을 기울여서 🔴 공을 🏁 까지 굴려요!';
+  startBtn.style.display = 'none';
+  playing = true;
+  startTime = last = performance.now();
+  requestAnimationFrame(loop);
+}
+
+// ----- 센서 -----
+let sensorOn = false;
+
+function onOrientation(e) {
+  if (e.gamma == null || e.beta == null) return;
+  const clamp = v => Math.max(-1, Math.min(1, v / MAX_DEG));
+  tilt.x = clamp(e.gamma);   // 좌우로 기울이면 좌우로
+  tilt.y = clamp(e.beta);    // 위쪽을 들면 아래로, 아래쪽을 들면 위로
+}
+
+async function askPermission(Ev) {
+  // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
+  if (Ev && typeof Ev.requestPermission === 'function') {
+    return (await Ev.requestPermission()) !== 'denied';
+  }
+  return true;
+}
+
+async function lockPortrait() {
+  // 안드로이드는 전체 화면일 때 세로로 고정할 수 있다 (아이폰은 CSS 안내로 대신)
+  try {
+    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    }
+    await screen.orientation.lock('portrait');
+  } catch (e) {}
+}
+
+startBtn.addEventListener('click', async () => {
+  if (!sensorOn) {
+    try {
+      if (!(await askPermission(window.DeviceOrientationEvent))) {
+        msgEl.textContent = '센서 권한이 거부됐어요. 설정에서 허용해 주세요.';
+        return;
+      }
+    } catch (e) {
+      msgEl.textContent = '권한을 물어볼 수 없어요. https 주소로 열어 주세요.';
+      return;
+    }
+    window.addEventListener('deviceorientation', onOrientation);
+    sensorOn = true;
+    lockPortrait();
+  }
+  begin();
+});
+
+window.addEventListener('keydown', e => { keys[e.key] = true; });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+window.addEventListener('resize', resize);
+resize();
+</script>
+</body>
+</html>

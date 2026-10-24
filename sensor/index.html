@@ -61,6 +61,7 @@
 
 <button id="start">시작</button>
 <div id="msg"></div>
+<a href="maze.html" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#16a34a;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🎮 미로 게임</a>
 <a href="../">← 처음으로</a>
 
 <script>
@@ -96,7 +97,7 @@ function onMotion(e) {
 async function askPermission(Ev) {
   // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
   if (Ev && typeof Ev.requestPermission === 'function') {
-    return (await Ev.requestPermission()) === 'granted';
+    return (await Ev.requestPermission()) !== 'denied';
   }
   return true;
 }
