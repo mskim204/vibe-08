@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: sans-serif;
+    background: #f3f4f6;
+    color: #111827;
+    padding: 16px;
+  }
+  .card {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  h1 { margin: 0 0 16px; font-size: 26px; text-align: center; }
+  label { display: block; font-size: 16px; color: #4b5563; margin-bottom: 6px; }
+  #code {
+    width: 100%;
+    font-size: 32px;
+    letter-spacing: 12px;
+    text-align: center;
+    padding: 10px;
+    border: 2px solid #d1d5db;
+    border-radius: 12px;
+    margin-bottom: 18px;
+  }
+  #code:focus { outline: none; border-color: #4f46e5; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .choice {
+    font-size: 22px;
+    padding: 18px 8px;
+    border: 2px solid #d1d5db;
+    border-radius: 12px;
+    background: #fff;
+    color: #111827;
+  }
+  .choice.on { border-color: #4f46e5; background: #eef2ff; font-weight: bold; }
+  #send {
+    width: 100%;
+    font-size: 24px;
+    font-weight: bold;
+    padding: 16px;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 12px;
+  }
+  #send:disabled { background: #9ca3af; }
+  #msg { margin-top: 14px; font-size: 20px; text-align: center; min-height: 1.4em; font-weight: bold; }
+  #msg.ok { color: #15803d; }
+  #msg.bad { color: #b91c1c; }
+
+  /* 결과 화면 */
+  .row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .row .name { font-size: 18px; font-weight: bold; color: #374151; }
+  .track { display: flex; align-items: center; gap: 8px; }
+  .bar {
+    height: 32px;
+    min-width: 2px;
+    background: #4f46e5;
+    border-radius: 0 4px 4px 0;   /* 시작점은 반듯하게, 끝만 둥글게 */
+    transition: width 0.4s;
+  }
+  .row .num { font-size: 18px; color: #374151; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #total { text-align: center; color: #6b7280; margin-top: 8px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- 투표 화면 -->
+<div class="card hidden" id="votePage">
+  <h1>🗳️ 간식 투표</h1>
+  <label for="code">투표 코드 (숫자 4자리)</label>
+  <input id="code" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000">
+  <label>먹고 싶은 간식</label>
+  <div class="choices" id="choices"></div>
+  <button id="send" disabled>투표하기</button>
+  <div id="msg"></div>
+</div>
+
+<!-- 결과 화면 -->
+<div class="card hidden" id="resultPage">
+  <h1>📊 간식 투표 결과</h1>
+  <div id="bars" role="list"></div>
+  <div id="total"></div>
+</div>
+
+<script>
+const PAGE = <?!= JSON.stringify(page) ?>;
+const CHOICES = ['떡볶이', '치킨', '마라탕', '붕어빵'];
+
+if (PAGE === 'result') {
+  // ----- 결과 화면 -----
+  document.getElementById('resultPage').classList.remove('hidden');
+  const barsEl = document.getElementById('bars');
+  const totalEl = document.getElementById('total');
+
+  function show(results) {
+    const max = Math.max(1, ...results.map(r => r.count));
+    const total = results.reduce((s, r) => s + r.count, 0);
+    barsEl.innerHTML = '';
+    results.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.setAttribute('role', 'listitem');
+      row.innerHTML =
+        '<div class="name"></div>' +
+        '<div class="track"><div class="bar"></div><div class="num"></div></div>';
+      row.querySelector('.name').textContent = r.name;
+      // 막대 옆에 숫자를 남길 자리를 빼고 길이를 정한다
+      row.querySelector('.bar').style.width = `calc((100% - 70px) * ${r.count / max})`;
+      const pct = total ? Math.round(r.count / total * 100) : 0;
+      row.querySelector('.num').textContent = `${r.count}표 (${pct}%)`;
+      row.title = `${r.name}: ${r.count}표, ${pct}%`;
+      barsEl.appendChild(row);
+    });
+    totalEl.textContent = `모두 ${total}표 · 5초마다 새로고침`;
+  }
+
+  function load() {
+    google.script.run
+      .withSuccessHandler(show)
+      .withFailureHandler(() => { totalEl.textContent = '결과를 불러오지 못했어요'; })
+      .getResults();
+  }
+  load();
+  setInterval(load, 5000);
+
+} else {
+  // ----- 투표 화면 -----
+  document.getElementById('votePage').classList.remove('hidden');
+  const codeEl = document.getElementById('code');
+  const choicesEl = document.getElementById('choices');
+  const sendBtn = document.getElementById('send');
+  const msgEl = document.getElementById('msg');
+  let picked = null;
+
+  CHOICES.forEach(name => {
+    const b = document.createElement('button');
+    b.className = 'choice';
+    b.textContent = name;
+    b.addEventListener('click', () => {
+      picked = name;
+      document.querySelectorAll('.choice').forEach(x => x.classList.toggle('on', x === b));
+      update();
+    });
+    choicesEl.appendChild(b);
+  });
+
+  function update() {
+    sendBtn.disabled = !(/^\d{4}$/.test(codeEl.value) && picked);
+  }
+
+  codeEl.addEventListener('input', () => {
+    codeEl.value = codeEl.value.replace(/\D/g, '').slice(0, 4);   // 숫자만
+    msgEl.textContent = '';
+    update();
+  });
+
+  function say(text, ok) {
+    msgEl.textContent = text;
+    msgEl.className = ok ? 'ok' : 'bad';
+  }
+
+  sendBtn.addEventListener('click', () => {
+    sendBtn.disabled = true;
+    sendBtn.textContent = '보내는 중…';
+    google.script.run
+      .withSuccessHandler(res => {
+        say(res.msg, res.ok);
+        sendBtn.textContent = '투표하기';
+        if (res.ok) {
+          codeEl.value = '';
+          picked = null;
+          document.querySelectorAll('.choice').forEach(x => x.classList.remove('on'));
+        }
+        update();
+      })
+      .withFailureHandler(() => {
+        say('잠시 후 다시 해 주세요', false);
+        sendBtn.textContent = '투표하기';
+        update();
+      })
+      .vote(codeEl.value, picked);
+  });
+}
+</script>
+</body>
+</html>
