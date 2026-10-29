@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>점프 측정</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: sans-serif;
+    background: #111827;
+    color: #fff;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .top a { color: #9ca3af; font-size: 16px; text-decoration: none; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #1f2937; border-radius: 12px; padding: 6px; }
+  .stat .label { font-size: 14px; color: #9ca3af; }
+  .stat .val { font-size: 32px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  #best { color: #facc15; }
+  #main { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  #height {
+    font-size: 40vw;
+    font-weight: bold;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.15s;
+  }
+  #height.air { transform: translateY(-6vh) scale(1.05); color: #38bdf8; }
+  #unit { font-size: 24px; color: #9ca3af; }
+  #air { font-size: 20px; color: #9ca3af; min-height: 1.2em; }
+  #log { font-size: 18px; color: #9ca3af; min-height: 1.2em; }
+  button {
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 14px;
+  }
+  #msg { font-size: 20px; min-height: 1.2em; }
+  .warn { font-size: 15px; color: #fca5a5; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="./">← 센서</a>
+  <b>🦘 점프 측정</b>
+  <span style="width:48px"></span>
+</div>
+<div class="stats">
+  <div class="stat"><div class="label">뛴 횟수</div><div class="val" id="count">0</div></div>
+  <div class="stat"><div class="label">최고 기록 (cm)</div><div class="val" id="best">-</div></div>
+</div>
+<div id="main">
+  <div id="height">0</div>
+  <div id="unit">cm</div>
+  <div id="air"></div>
+</div>
+<div id="log"></div>
+<div id="msg">폰을 두 손으로 가슴에 꼭 안고 제자리에서 점프해요!</div>
+<div class="warn">⚠️ 폰을 던지지 마세요! 넓은 곳에서, 폰을 꽉 잡고 뛰어요</div>
+<button id="start">시작</button>
+
+<script>
+// 공중에 떠 있는 동안은 폰이 "무게가 없는" 상태가 된다 (가속도가 0에 가까워짐)
+// 떠 있던 시간 t 로 높이를 구한다: 높이 = 중력 × t² ÷ 8
+const G = 9.8;
+const FLOAT = 4;        // 이보다 작으면 공중에 떠 있다 (m/s²)
+const MIN_AIR = 0.12;   // 이보다 짧으면 점프가 아님 (초)
+const MAX_AIR = 1.0;    // 이보다 길면 이상한 값 (폰을 던졌거나 떨어뜨림)
+
+const heightEl = document.getElementById('height');
+const airEl = document.getElementById('air');
+const countEl = document.getElementById('count');
+const bestEl = document.getElementById('best');
+const logEl = document.getElementById('log');
+const msgEl = document.getElementById('msg');
+const startBtn = document.getElementById('start');
+
+// ----- 기록 -----
+const BEST_KEY = 'jump-best';
+function loadBest() {
+  try { return parseInt(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; }
+}
+function saveBest(n) {
+  try { localStorage.setItem(BEST_KEY, String(n)); } catch (e) {}
+}
+let best = loadBest();
+function showBest() { bestEl.textContent = best ? best : '-'; }
+showBest();
+
+// ----- 점프 재기 -----
+let on = false, sensorOn = false, flyStart = 0, waitUntil = 0, jumps = [];
+
+function onMotion(e) {
+  if (!on) return;
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null) return;
+  const size = Math.hypot(a.x, a.y, a.z);
+  const now = performance.now();
+  if (now < waitUntil) return;   // 착지할 때 쿵! 하는 흔들림은 무시
+  if (size < FLOAT) {
+    if (!flyStart) {
+      flyStart = now;
+      heightEl.classList.add('air');
+      airEl.textContent = '🚀 공중!';
+    }
+  } else if (flyStart) {
+    land((now - flyStart) / 1000);
+    flyStart = 0;
+  }
+}
+
+function land(t) {
+  heightEl.classList.remove('air');
+  waitUntil = performance.now() + 500;
+  if (t < MIN_AIR) { airEl.textContent = ''; return; }
+  if (t > MAX_AIR) {
+    airEl.textContent = '';
+    msgEl.textContent = '😮 너무 길어요! 폰을 던지지 말고 꼭 안고 뛰어요';
+    return;
+  }
+  const cm = Math.round(G * t * t / 8 * 100);
+  jumps.push(cm);
+  heightEl.textContent = cm;
+  airEl.textContent = `공중에 ${t.toFixed(2)}초 떠 있었어요`;
+  countEl.textContent = jumps.length;
+  logEl.textContent = '최근: ' + jumps.slice(-5).join(', ') + ' cm';
+  if (navigator.vibrate) try { navigator.vibrate(60); } catch (e) {}
+  if (cm > best) {
+    best = cm;
+    saveBest(best);
+    showBest();
+    msgEl.textContent = `🎉 ${cm}cm! 새 최고 기록!`;
+  } else {
+    msgEl.textContent = `🦘 ${cm}cm! 한 번 더!`;
+  }
+}
+
+// 컴퓨터에서 시험할 때는 스페이스바를 누르고 있는 동안 "공중"
+let keyStart = 0;
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && on && !e.repeat) { keyStart = performance.now(); heightEl.classList.add('air'); }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space' && on && keyStart) { land((performance.now() - keyStart) / 1000); keyStart = 0; }
+});
+
+async function askPermission(Ev) {
+  // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
+  if (Ev && typeof Ev.requestPermission === 'function') {
+    return (await Ev.requestPermission()) !== 'denied';
+  }
+  return true;
+}
+
+startBtn.addEventListener('click', async () => {
+  if (!sensorOn) {
+    try {
+      if (!(await askPermission(window.DeviceMotionEvent))) {
+        msgEl.textContent = '센서 권한이 거부됐어요. 설정에서 허용해 주세요.';
+        return;
+      }
+    } catch (e) {
+      msgEl.textContent = '권한을 물어볼 수 없어요. https 주소로 열어 주세요.';
+      return;
+    }
+    window.addEventListener('devicemotion', onMotion);
+    sensorOn = true;
+  }
+  startBtn.blur();   // 스페이스바가 버튼을 다시 누르지 않게
+  on = !on;
+  startBtn.textContent = on ? '멈추기' : '시작';
+  msgEl.textContent = on ? '준비됐어요! 점프! 🦘' : '멈췄어요';
+  flyStart = 0;
+});
+</script>
+</body>
+</html>

@@ -59,13 +59,40 @@
     border-radius: 14px;
   }
   #msg { font-size: 20px; min-height: 1.2em; }
+  .top button { padding: 6px 10px; font-size: 15px; background: #1f2937; border-radius: 8px; }
+  /* 순위표 */
+  #rank {
+    display: none;
+    position: fixed; inset: 0;
+    background: #111827f2;
+    flex-direction: column;
+    padding: 20px 16px;
+    gap: 12px;
+    z-index: 10;
+  }
+  #rank.show { display: flex; }
+  #rank h2 { margin: 0; }
+  #list { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; text-align: left; }
+  #list li {
+    display: flex; gap: 12px; align-items: center;
+    background: #1f2937; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 6px; font-size: 22px;
+  }
+  #list li.me { background: #4f46e5; }
+  #list .no { width: 40px; font-weight: bold; color: #9ca3af; }
+  #list li.me .no { color: #fff; }
+  #list .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #list .score { font-weight: bold; font-variant-numeric: tabular-nums; }
+  #rank .btns { display: flex; gap: 10px; justify-content: center; }
+  #rank .btns button { padding: 14px 24px; font-size: 20px; }
+  #clear { background: #374151; }
 </style>
 </head>
 <body>
 <div class="top">
   <a href="./">← 센서</a>
   <b>💪 흔들기 대결</b>
-  <span style="width:48px"></span>
+  <button id="rankBtn">🏆 순위</button>
 </div>
 <div class="stats">
   <div class="stat"><div class="label">남은 시간</div><div class="val" id="time">10.0</div></div>
@@ -78,6 +105,11 @@
 </div>
 <div id="msg">10초 동안 폰을 최대한 많이 흔들어요! (폰을 꽉 잡고!)</div>
 <button id="start">시작</button>
+<div id="rank">
+  <h2>🏆 흔들기 순위표 Top 10</h2>
+  <ol id="list"></ol>
+  <div class="btns"><button id="close">닫기</button><button id="clear">지우기</button></div>
+</div>
 
 <script>
 const GAME_SEC = 10;
@@ -103,6 +135,54 @@ function saveBest(n) {
 let best = loadBest();
 function showBest() { bestEl.textContent = best ? best : '-'; }
 showBest();
+
+// ----- 순위표 (이 폰에 저장 → 폰 하나를 돌려 가며 반 친구들과 겨뤄요) -----
+const RANK_KEY = 'shake-rank';
+const rankEl = document.getElementById('rank');
+const listEl = document.getElementById('list');
+function loadRank() {
+  try { return JSON.parse(localStorage.getItem(RANK_KEY)) || []; } catch (e) { return []; }
+}
+function saveRank(r) {
+  try { localStorage.setItem(RANK_KEY, JSON.stringify(r)); } catch (e) {}
+}
+function showRank(me) {
+  const r = loadRank();
+  listEl.innerHTML = '';
+  if (!r.length) listEl.innerHTML = '<li>아직 기록이 없어요</li>';
+  r.forEach((e, i) => {
+    const li = document.createElement('li');
+    if (e === me || (me && e.at === me.at)) li.className = 'me';
+    const medal = ['🥇', '🥈', '🥉'][i] || (i + 1);
+    li.innerHTML = '<span class="no"></span><span class="name"></span><span class="score"></span>';
+    li.children[0].textContent = medal;
+    li.children[1].textContent = e.name;   // 이름은 글자로만 넣는다
+    li.children[2].textContent = e.score + '번';
+    listEl.appendChild(li);
+  });
+  rankEl.classList.add('show');
+}
+function addRank(score) {
+  const r = loadRank();
+  if (r.length >= 10 && score <= r[r.length - 1].score) return;   // 10등 안에 못 들면 안 물어본다
+  let last = '';
+  try { last = localStorage.getItem('shake-name') || ''; } catch (e) {}
+  const name = (prompt(`🎉 ${score}번! 순위표에 올릴 이름을 적어 주세요`, last) || '').trim().slice(0, 12);
+  if (!name) return;
+  try { localStorage.setItem('shake-name', name); } catch (e) {}
+  const me = { name, score, at: Date.now() };
+  r.push(me);
+  r.sort((a, b) => b.score - a.score || a.at - b.at);
+  saveRank(r.slice(0, 10));
+  showRank(me);
+}
+document.getElementById('rankBtn').addEventListener('click', () => showRank());
+document.getElementById('close').addEventListener('click', () => rankEl.classList.remove('show'));
+document.getElementById('clear').addEventListener('click', () => {
+  if (!confirm('순위표를 모두 지울까요?')) return;
+  saveRank([]);
+  showRank();
+});
 
 // ----- 흔들기 세기 -----
 let playing = false, count = 0, armed = true, lastShake = 0;
@@ -164,6 +244,7 @@ function finish() {
   }
   startBtn.textContent = '다시 하기';
   startBtn.style.display = '';
+  if (count > 0) setTimeout(() => addRank(count), 400);   // 진동이 끝난 뒤 이름 묻기
 }
 
 function countdown(n) {
