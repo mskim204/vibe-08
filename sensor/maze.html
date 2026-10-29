@@ -33,6 +33,9 @@
   .stat .label { font-size: 14px; color: #9ca3af; }
   .stat .val { font-size: 32px; font-weight: bold; font-variant-numeric: tabular-nums; }
   #best { color: #facc15; }
+  .opts { display: flex; gap: 8px; justify-content: center; align-items: center; font-size: 15px; color: #9ca3af; }
+  .opts button { padding: 6px 12px; font-size: 15px; background: #1f2937; border-radius: 8px; }
+  .opts button.on { background: #4f46e5; }
   #board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
   canvas { border-radius: 8px; }
   button {
@@ -63,11 +66,15 @@
 <div class="top">
   <a href="./">← 센서</a>
   <b id="title">🎮 미로 게임</b>
-  <span class="lv"><a href="?level=1" id="lv1">Lv1</a> <a href="?level=2" id="lv2">Lv2</a> <a href="?level=3" id="lv3">Lv3</a></span>
+  <span class="lv">Lv <a href="?level=1" id="lv1">1</a><a href="?level=2" id="lv2">2</a><a href="?level=3" id="lv3">3</a><a href="?level=4" id="lv4">4</a><a href="?level=5" id="lv5">5</a></span>
 </div>
 <div class="stats">
   <div class="stat"><div class="label">시간</div><div class="val" id="time">0.00</div></div>
   <div class="stat"><div class="label">최고 기록</div><div class="val" id="best">-</div></div>
+</div>
+<div class="opts">
+  감도 <button data-s="slow">느림</button><button data-s="normal">보통</button><button data-s="fast">빠름</button>
+  <button id="sound">🔊</button>
 </div>
 <div id="board"><canvas id="cv"></canvas></div>
 <div id="msg">폰을 기울여서 🔴 공을 🏁 까지 굴려요!</div>
@@ -83,6 +90,15 @@ const LEVELS = {
   1: { cw: 7, ch: 10, seed: 8, holes: 0 },
   2: { cw: 9, ch: 13, seed: 21, holes: 9 },   // 더 크고, 구멍이 있다
   3: { cw: 11, ch: 16, seed: 37, holes: 18 }, // 가장 크고, 구멍이 아주 많다
+  4: { cw: 9, ch: 13, seed: 62, holes: 10, moving: true },   // 구멍이 길 위로 왔다 갔다 한다
+  5: { cw: 11, ch: 16, seed: 73, holes: 0, stars: 8 },       // 별을 다 모아야 골인
+};
+const INTROS = {
+  1: '폰을 기울여서 🔴 공을 🏁 까지 굴려요!',
+  2: '🕳️ 구멍에 빠지면 출발로 돌아가요! 살살 굴려요',
+  3: '🔥 구멍이 아주 많아요. 천천히 굴려요',
+  4: '🌀 구멍이 움직여요! 길이 비었을 때 지나가요',
+  5: '⭐ 별을 모두 모아야 🏁 골인할 수 있어요!',
 };
 const LEVEL = LEVELS[new URLSearchParams(location.search).get('level')] ? +new URLSearchParams(location.search).get('level') : 1;
 document.getElementById('lv' + LEVEL).className = 'on';
@@ -156,8 +172,9 @@ function makeHoles(count, seed) {
     for (let x = 1; x < COLS - 1; x++) {
       if (grid[y][x] || path.has(x + ',' + y)) continue;
       if (Math.abs(x - 1) + Math.abs(y - 1) < 4) continue;   // 출발 바로 옆은 비워 두기
-      const nearPath = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => path.has((x + dx) + ',' + (y + dy)));
-      (nearPath ? near : far).push({ x, y });
+      const toPath = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => path.has((x + dx) + ',' + (y + dy)));
+      if (toPath) near.push({ x, y, dx: toPath[0], dy: toPath[1] });
+      else far.push({ x, y, dx: 0, dy: 0 });
     }
   }
   const shuffle = a => {   // 섞기
@@ -168,9 +185,55 @@ function makeHoles(count, seed) {
     return a;
   };
   // 길 옆 칸을 먼저 쓰고, 모자라면 다른 갈림길 칸에도 놓는다
-  return shuffle(near).concat(shuffle(far)).slice(0, count);
+  return shuffle(near).concat(shuffle(far)).slice(0, count)
+    .map((h, i) => ({ ...h, cx: h.x + 0.5, cy: h.y + 0.5, phase: i * 1.7 }));
+}
+
+// 움직이는 구멍: 갈림길 칸과 바로 옆 정답 길 칸 사이를 왔다 갔다 한다
+function moveHoles(t) {
+  if (!L.moving) return;
+  for (const h of holes) {
+    const k = (1 - Math.cos(t * 1.6 + h.phase)) / 2;   // 0 ~ 1
+    h.cx = h.x + 0.5 + h.dx * k;
+    h.cy = h.y + 0.5 + h.dy * k;
+  }
 }
 const holes = makeHoles(L.holes, L.seed + 100);
+
+// 별은 막다른 길 끝에 둔다 → 갈림길까지 돌아다녀야 다 모을 수 있다
+function makeStars(count, seed) {
+  if (!count) return [];
+  const rand = rng(seed);
+  // 구멍을 지나지 않고 갈 수 있는 칸만 (구멍 너머에 별이 있으면 못 먹으니까)
+  const reach = new Set(['1,1']);
+  const q = [[1, 1]];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+      if (grid[ny][nx] || reach.has(k) || holes.some(h => h.x === nx && h.y === ny)) continue;
+      reach.add(k);
+      q.push([nx, ny]);
+    }
+  }
+  const spots = [];
+  for (let y = 1; y < ROWS - 1; y += 2) {
+    for (let x = 1; x < COLS - 1; x += 2) {
+      if ((x === 1 && y === 1) || (x === GOAL.x && y === GOAL.y)) continue;
+      if (!reach.has(x + ',' + y)) continue;
+      const open = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !grid[y + dy][x + dx]).length;
+      if (open === 1) spots.push({ x, y });
+    }
+  }
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [spots[i], spots[j]] = [spots[j], spots[i]];
+  }
+  return spots.slice(0, count);
+}
+let stars = [];
+function resetStars() { stars = makeStars(L.stars, L.seed + 200); }
+resetStars();
 
 // ----- 화면 -----
 const cv = document.getElementById('cv');
@@ -180,11 +243,7 @@ const bestEl = document.getElementById('best');
 const msgEl = document.getElementById('msg');
 const startBtn = document.getElementById('start');
 const nextBtn = document.getElementById('next');
-const INTRO = LEVEL === 1
-  ? '폰을 기울여서 🔴 공을 🏁 까지 굴려요!'
-  : LEVEL === 2
-  ? '🕳️ 구멍에 빠지면 출발로 돌아가요! 살살 굴려요'
-  : '🔥 마지막 레벨! 구멍이 아주 많아요. 천천히 굴려요';
+const INTRO = INTROS[LEVEL];
 msgEl.textContent = INTRO;
 document.getElementById('title').textContent = '🎮 미로 레벨 ' + LEVEL;
 document.title = '미로 게임 레벨 ' + LEVEL;
@@ -220,7 +279,7 @@ function draw() {
   ctx.textBaseline = 'middle';
   ctx.fillText('🏁', (GOAL.x + 0.5) * tile, (GOAL.y + 0.5) * tile);
   for (const h of holes) {
-    const hx = (h.x + 0.5) * tile, hy = (h.y + 0.5) * tile, hr = HOLE_R * tile * 1.15;
+    const hx = h.cx * tile, hy = h.cy * tile, hr = HOLE_R * tile * 1.15;
     const hg = ctx.createRadialGradient(hx, hy, hr * 0.2, hx, hy, hr);
     hg.addColorStop(0, '#000');
     hg.addColorStop(1, '#4b5563');
@@ -229,6 +288,7 @@ function draw() {
     ctx.arc(hx, hy, hr, 0, Math.PI * 2);
     ctx.fill();
   }
+  for (const st of stars) ctx.fillText('⭐', (st.x + 0.5) * tile, (st.y + 0.5) * tile);
   const bx = ball.x * tile, by = ball.y * tile, br = R * tile;
   const grad = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, br * 0.1, bx, by, br);
   grad.addColorStop(0, '#fca5a5');
@@ -243,7 +303,20 @@ function draw() {
 const ball = { x: START.x, y: START.y, vx: 0, vy: 0 };
 const tilt = { x: 0, y: 0 };   // -1 ~ 1
 const keys = {};
-const MAX_DEG = 40;            // 이만큼 기울이면 최대 힘
+// 감도: 이만큼 기울이면 최대 힘 (느림은 많이 기울여야 빨라진다)
+const SENS = { slow: 60, normal: 40, fast: 25 };
+let sens = 'normal';
+try { if (SENS[localStorage.getItem('maze-sens')]) sens = localStorage.getItem('maze-sens'); } catch (e) {}
+let MAX_DEG = SENS[sens];
+const sensBtns = document.querySelectorAll('[data-s]');
+function showSens() { sensBtns.forEach(b => b.className = b.dataset.s === sens ? 'on' : ''); }
+sensBtns.forEach(b => b.addEventListener('click', () => {
+  sens = b.dataset.s;
+  MAX_DEG = SENS[sens];
+  try { localStorage.setItem('maze-sens', sens); } catch (e) {}
+  showSens();
+}));
+showSens();
 const ACCEL = 30;              // 칸/초²
 const MAX_SPEED = 12;          // 칸/초
 
@@ -291,20 +364,64 @@ function step(dt) {
       else ball.y = ny;
     }
   }
-  if (hit > 1.5) buzz(Math.round(Math.min(60, 10 + hit * 4)));   // 세게 부딪힐수록 길게 떨림
+  if (hit > 1.5 && buzz(Math.round(Math.min(60, 10 + hit * 4)))) sfx.bump(hit);   // 세게 부딪힐수록 길게 떨림
 }
 
 // ----- 진동 (안드로이드만 됨, 아이폰은 그냥 무시) -----
 let lastBuzz = 0;
 function buzz(ms, force) {
   const now = performance.now();
-  if (!navigator.vibrate || (!force && now - lastBuzz < 120)) return;   // 벽에 붙어 있을 때 계속 떨리지 않게
+  if (!force && now - lastBuzz < 120) return false;   // 벽에 붙어 있을 때 계속 떨리지 않게
   lastBuzz = now;
-  try { navigator.vibrate(ms); } catch (e) {}
+  if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {}
+  return true;
 }
 
+// ----- 효과음 (아이폰은 진동이 안 되니 소리로 알려 준다) -----
+let audio = null;
+let soundOn = true;
+try { soundOn = localStorage.getItem('maze-sound') !== 'off'; } catch (e) {}
+const soundBtn = document.getElementById('sound');
+function showSound() { soundBtn.textContent = soundOn ? '🔊' : '🔇'; }
+soundBtn.addEventListener('click', () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem('maze-sound', soundOn ? 'on' : 'off'); } catch (e) {}
+  showSound();
+  unlockAudio();
+});
+showSound();
+
+function unlockAudio() {
+  // 아이폰은 버튼을 누를 때 소리를 켜 줘야 한다
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch (e) {}
+}
+
+function tone(freq, start, len, type = 'sine', vol = 0.2, endFreq) {
+  if (!soundOn || !audio) return;
+  const t = audio.currentTime + start;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + len);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  o.connect(g).connect(audio.destination);
+  o.start(t);
+  o.stop(t + len);
+}
+
+const sfx = {
+  bump: hit => tone(120, 0, 0.08, 'square', Math.min(0.25, 0.05 + hit * 0.02)),   // 툭
+  fall: () => tone(700, 0, 0.5, 'sine', 0.3, 80),                                   // 뿅~
+  star: () => { tone(1320, 0, 0.12, 'triangle'); tone(1760, 0.08, 0.15, 'triangle'); },
+  goal: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.12, 0.25, 'triangle', 0.25)),   // 빠밤
+};
+
 function inHole() {
-  return holes.some(h => (ball.x - h.x - 0.5) ** 2 + (ball.y - h.y - 0.5) ** 2 < HOLE_R * HOLE_R);
+  return holes.some(h => (ball.x - h.cx) ** 2 + (ball.y - h.cy) ** 2 < HOLE_R * HOLE_R);
 }
 
 // ----- 기록 -----
@@ -328,16 +445,25 @@ function loop(now) {
   last = now;
   step(dt);
   const t = (now - startTime) / 1000;
+  moveHoles(t);
   timeEl.textContent = t.toFixed(2);
   if (inHole()) {
     // 구멍에 빠지면 출발로! (시간은 계속 흐른다)
     Object.assign(ball, { x: START.x, y: START.y, vx: 0, vy: 0 });
     falls++;
     buzz([200, 80, 200], true);
+    sfx.fall();
     msgEl.textContent = `🕳️ 앗, 빠졌다! 출발로 돌아가요 (${falls}번)`;
   }
+  const got = stars.filter(st => Math.floor(ball.x) === st.x && Math.floor(ball.y) === st.y);
+  if (got.length) {
+    stars = stars.filter(st => !got.includes(st));
+    sfx.star();
+    msgEl.textContent = stars.length ? `⭐ 별 ${L.stars - stars.length}/${L.stars}개!` : '⭐ 별을 다 모았어요! 🏁 으로 가요!';
+  }
   if (Math.floor(ball.x) === GOAL.x && Math.floor(ball.y) === GOAL.y) {
-    finish(t);
+    if (!stars.length) finish(t);
+    else msgEl.textContent = `⭐ 별을 ${stars.length}개 더 모아야 골인할 수 있어요!`;
   }
   draw();
   if (playing) requestAnimationFrame(loop);
@@ -345,6 +471,7 @@ function loop(now) {
 
 function finish(t) {
   playing = false;
+  sfx.goal();
   timeEl.textContent = t.toFixed(2);
   if (!best || t < best) {
     best = t;
@@ -363,6 +490,7 @@ function begin() {
   Object.assign(ball, { x: START.x, y: START.y, vx: 0, vy: 0 });
   msgEl.textContent = INTRO;
   falls = 0;
+  resetStars();
   startBtn.style.display = 'none';
   nextBtn.style.display = 'none';
   playing = true;
@@ -399,6 +527,7 @@ async function lockPortrait() {
 }
 
 startBtn.addEventListener('click', async () => {
+  unlockAudio();
   if (!sensorOn) {
     try {
       if (!(await askPermission(window.DeviceOrientationEvent))) {

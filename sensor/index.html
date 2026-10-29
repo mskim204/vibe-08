@@ -41,6 +41,15 @@
   }
   #msg { color: #f87171; font-size: 18px; min-height: 1em; }
   a { color: #9ca3af; }
+  .games { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .games a {
+    padding: 14px 8px;
+    color: #fff;
+    font-size: 19px;
+    font-weight: bold;
+    text-decoration: none;
+    border-radius: 12px;
+  }
 </style>
 </head>
 <body>
@@ -61,10 +70,17 @@
 
 <button id="start">시작</button>
 <div id="msg"></div>
-<a href="maze.html" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#16a34a;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🎮 미로 게임</a>
-<a href="maze.html?level=2" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#b45309;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🕳️ 미로 레벨 2</a>
-<a href="maze.html?level=3" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#b91c1c;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">🔥 미로 레벨 3</a>
-<a href="shake.html" style="display:inline-block;margin:0 auto;padding:14px 28px;background:#db2777;color:#fff;font-size:22px;font-weight:bold;text-decoration:none;border-radius:12px">💪 흔들기 대결</a>
+<div class="games">
+  <a href="maze.html" style="background:#16a34a">🎮 미로 레벨 1</a>
+  <a href="maze.html?level=2" style="background:#b45309">🕳️ 미로 레벨 2</a>
+  <a href="maze.html?level=3" style="background:#b91c1c">🔥 미로 레벨 3</a>
+  <a href="maze.html?level=4" style="background:#7c3aed">🌀 미로 레벨 4</a>
+  <a href="maze.html?level=5" style="background:#ca8a04">⭐ 미로 레벨 5</a>
+  <a href="shake.html" style="background:#db2777">💪 흔들기 대결</a>
+  <a href="level.html" style="background:#0d9488">🫧 수평 맞추기</a>
+  <a href="compass.html" style="background:#2563eb">🧭 나침반 미션</a>
+  <a href="jump.html" style="background:#ea580c">🦘 점프 측정</a>
+</div>
 <a href="../">← 처음으로</a>
 
 <script>

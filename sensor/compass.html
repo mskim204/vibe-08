@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>나침반 미션</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: sans-serif;
+    background: #111827;
+    color: #fff;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .top a { color: #9ca3af; font-size: 16px; text-decoration: none; }
+  .stats { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #1f2937; border-radius: 12px; padding: 6px; }
+  .stat .label { font-size: 14px; color: #9ca3af; }
+  .stat .val { font-size: 32px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  #best { color: #facc15; }
+  #mission { font-size: 34px; font-weight: bold; min-height: 1.2em; color: #facc15; }
+  #main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .wrap { position: relative; }
+  /* 나침반 판: 폰을 돌리면 판이 반대로 돌아서 N이 늘 북쪽을 가리킨다 */
+  #dial {
+    position: relative;
+    width: min(80vw, 44vh);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #1f2937;
+    border: 6px solid #374151;
+  }
+  #dial.ok { border-color: #22c55e; }
+  #dial span {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 48px; height: 48px; margin: -24px 0 0 -24px;
+    line-height: 48px;
+    font-size: 26px; font-weight: bold;
+  }
+  #goal {
+    position: absolute; left: 50%; top: 50%;
+    width: 0; height: 0;
+  }
+  #goal::after {
+    content: '🎯';
+    position: absolute;
+    left: -18px; top: calc(-1 * min(40vw, 22vh) - 6px);
+    font-size: 30px;
+  }
+  /* 폰이 향한 쪽 (늘 위) */
+  #needle {
+    position: absolute; left: 50%; top: -16px;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 16px solid transparent;
+    border-right: 16px solid transparent;
+    border-top: 30px solid #ef4444;
+    z-index: 2;
+  }
+  #heading { font-size: 16vw; font-weight: bold; line-height: 1; font-variant-numeric: tabular-nums; }
+  button {
+    padding: 18px 40px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    background: #4f46e5;
+    border: none;
+    border-radius: 14px;
+  }
+  #msg { font-size: 20px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="./">← 센서</a>
+  <b>🧭 나침반 미션</b>
+  <span style="width:48px"></span>
+</div>
+<div class="stats">
+  <div class="stat"><div class="label">시간</div><div class="val" id="time">0.00</div></div>
+  <div class="stat"><div class="label">최고 기록</div><div class="val" id="best">-</div></div>
+</div>
+<div id="heading">-</div>
+<div id="mission"></div>
+<div id="main"><div class="wrap"><div id="needle"></div><div id="dial"><div id="goal"></div></div></div></div>
+<div id="msg">폰을 평평하게 들고, 말하는 방향으로 몸을 돌려요! (5문제)</div>
+<button id="start">시작</button>
+
+<script>
+const ROUNDS = 5;
+const OK_DEG = 15;      // 이 안에 들어오면 맞음
+const HOLD_MS = 1000;   // 1초 동안 그 방향을 보고 있으면 통과
+
+const DIRS = ['북', '북동', '동', '남동', '남', '남서', '서', '북서'];   // 45도씩
+const dialEl = document.getElementById('dial');
+const goalEl = document.getElementById('goal');
+const headingEl = document.getElementById('heading');
+const missionEl = document.getElementById('mission');
+const timeEl = document.getElementById('time');
+const bestEl = document.getElementById('best');
+const msgEl = document.getElementById('msg');
+const startBtn = document.getElementById('start');
+
+// 판에 글자 붙이기
+['N', 'E', 'S', 'W'].forEach((t, i) => {
+  const s = document.createElement('span');
+  s.textContent = t;
+  s.style.color = t === 'N' ? '#ef4444' : '#e5e7eb';
+  s.dataset.a = i * 90;
+  dialEl.appendChild(s);
+});
+function placeLetters() {
+  const r = dialEl.clientWidth * 0.38;
+  dialEl.querySelectorAll('span').forEach(s => {
+    const a = s.dataset.a * Math.PI / 180;
+    s.style.transform = `translate(${Math.sin(a) * r}px, ${-Math.cos(a) * r}px)`;
+  });
+}
+placeLetters();
+window.addEventListener('resize', placeLetters);
+
+// ----- 기록 -----
+const BEST_KEY = 'compass-best';
+function loadBest() {
+  try { return parseFloat(localStorage.getItem(BEST_KEY)) || null; } catch (e) { return null; }
+}
+function saveBest(t) {
+  try { localStorage.setItem(BEST_KEY, String(t)); } catch (e) {}
+}
+let best = loadBest();
+function showBest() { bestEl.textContent = best ? best.toFixed(2) : '-'; }
+showBest();
+
+// ----- 센서 -----
+let heading = null;    // 0 = 북쪽, 시계 방향으로 커진다
+let sensorOn = false;
+
+function onOrientation(e) {
+  if (e.webkitCompassHeading != null) {
+    heading = e.webkitCompassHeading;            // 아이폰
+  } else if (e.absolute && e.alpha != null) {
+    heading = (360 - e.alpha) % 360;             // 안드로이드
+  }
+}
+
+const diff = (a, b) => ((a - b + 540) % 360) - 180;   // -180 ~ 180
+
+// ----- 게임 진행 -----
+let playing = false, startTime = 0, round = 0, target = 0, holdStart = 0;
+
+function newMission() {
+  let i;
+  do { i = Math.floor(Math.random() * 8); } while (heading != null && Math.abs(diff(i * 45, heading)) < 60);   // 너무 가까운 방향은 빼기
+  target = i * 45;
+  missionEl.textContent = `${round + 1}/${ROUNDS} · ${DIRS[i]}쪽을 봐요!`;
+  holdStart = 0;
+}
+
+function loop(now) {
+  if (heading != null) {
+    headingEl.textContent = Math.round(heading) + '°';
+    dialEl.style.transform = `rotate(${-heading}deg)`;
+  }
+  goalEl.style.transform = `rotate(${target}deg)`;
+  goalEl.style.display = playing ? '' : 'none';
+  if (playing) {
+    const t = (now - startTime) / 1000;
+    timeEl.textContent = t.toFixed(2);
+    const d = heading == null ? 999 : diff(target, heading);
+    const ok = Math.abs(d) <= OK_DEG;
+    dialEl.classList.toggle('ok', ok);
+    if (heading == null) {
+      msgEl.textContent = '나침반을 찾는 중… 폰을 8자로 한 번 흔들어 보세요';
+    } else if (ok) {
+      if (!holdStart) holdStart = now;
+      msgEl.textContent = '좋아요! 그대로…';
+      if (now - holdStart >= HOLD_MS) {
+        if (navigator.vibrate) try { navigator.vibrate(80); } catch (e) {}
+        round++;
+        if (round >= ROUNDS) { finish(t); }
+        else newMission();
+      }
+    } else {
+      holdStart = 0;
+      msgEl.textContent = d > 0 ? '오른쪽으로 돌아요 ↻' : '↺ 왼쪽으로 돌아요';
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+function finish(t) {
+  playing = false;
+  dialEl.classList.remove('ok');
+  if (navigator.vibrate) try { navigator.vibrate(300); } catch (e) {}
+  missionEl.textContent = '🏁 미션 완료!';
+  if (!best || t < best) {
+    best = t;
+    saveBest(t);
+    showBest();
+    msgEl.textContent = `🎉 ${t.toFixed(2)}초 — 새 최고 기록!`;
+  } else {
+    msgEl.textContent = `✅ ${t.toFixed(2)}초 걸렸어요`;
+  }
+  startBtn.textContent = '다시 하기';
+  startBtn.style.display = '';
+}
+
+async function askPermission(Ev) {
+  // 아이폰(iOS 13+)은 버튼을 누를 때 권한을 물어봐야 한다
+  if (Ev && typeof Ev.requestPermission === 'function') {
+    return (await Ev.requestPermission()) !== 'denied';
+  }
+  return true;
+}
+
+startBtn.addEventListener('click', async () => {
+  if (!sensorOn) {
+    try {
+      if (!(await askPermission(window.DeviceOrientationEvent))) {
+        msgEl.textContent = '센서 권한이 거부됐어요. 설정에서 허용해 주세요.';
+        return;
+      }
+    } catch (e) {
+      msgEl.textContent = '권한을 물어볼 수 없어요. https 주소로 열어 주세요.';
+      return;
+    }
+    // 안드로이드는 'deviceorientationabsolute' 가 북쪽 기준 방향을 준다
+    window.addEventListener('ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', onOrientation);
+    sensorOn = true;
+  }
+  startBtn.style.display = 'none';
+  round = 0;
+  newMission();
+  playing = true;
+  startTime = performance.now();
+});
+
+// 컴퓨터에서 시험할 때는 방향키로 돌기
+window.addEventListener('keydown', e => {
+  const k = { ArrowLeft: -10, ArrowRight: 10 }[e.key];
+  if (k) heading = ((heading || 0) + k + 360) % 360;
+});
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
