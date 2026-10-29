@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: sans-serif; text-align: center; padding: 30px 16px; background: #fff7ed; margin: 0; }
+  h1 { margin-top: 0; }
+  input { font-size: 22px; padding: 12px; width: 100%; max-width: 320px; box-sizing: border-box;
+          border: 2px solid #fb923c; border-radius: 12px; text-align: center; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 360px; margin: 20px auto; }
+  .choice { font-size: 22px; padding: 18px 8px; border: 3px solid #fed7aa; border-radius: 14px;
+            background: #fff; cursor: pointer; }
+  .choice.selected { border-color: #ea580c; background: #ffedd5; font-weight: bold; }
+  #send { font-size: 22px; font-weight: bold; padding: 14px 40px; border: none; border-radius: 14px;
+          background: #ea580c; color: #fff; cursor: pointer; }
+  #send:disabled { background: #d1d5db; }
+  #msg { font-size: 22px; font-weight: bold; margin-top: 20px; min-height: 30px; }
+  .ok { color: #16a34a; } .err { color: #dc2626; }
+</style>
+</head>
+<body>
+<h1>🍽️ 간식 투표</h1>
+<input id="code" placeholder="투표 코드" autocomplete="off">
+<div class="choices" id="choices"></div>
+<button id="send">투표하기</button>
+<div id="msg"></div>
+
+<script>
+  var CHOICES = [
+    { name: '떡볶이', emoji: '🌶️' },
+    { name: '치킨', emoji: '🍗' },
+    { name: '마라탕', emoji: '🍲' },
+    { name: '붕어빵', emoji: '🐟' }
+  ];
+  var selected = null;
+  var box = document.getElementById('choices');
+  var msg = document.getElementById('msg');
+  var btn = document.getElementById('send');
+
+  CHOICES.forEach(function (c) {
+    var b = document.createElement('button');
+    b.className = 'choice';
+    b.textContent = c.emoji + ' ' + c.name;
+    b.onclick = function () {
+      selected = c.name;
+      document.querySelectorAll('.choice').forEach(function (x) { x.classList.remove('selected'); });
+      b.classList.add('selected');
+    };
+    box.appendChild(b);
+  });
+
+  function show(text, ok) {
+    msg.textContent = text;
+    msg.className = ok ? 'ok' : 'err';
+  }
+
+  btn.onclick = function () {
+    var code = document.getElementById('code').value.trim();
+    if (!code) return show('코드를 입력해 주세요.', false);
+    if (!selected) return show('보기를 골라 주세요.', false);
+    btn.disabled = true;
+    show('확인 중...', true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        show(res.message, res.ok);
+        if (res.ok) document.getElementById('code').value = '';
+      })
+      .withFailureHandler(function () {
+        btn.disabled = false;
+        show('잠시 후 다시 해 주세요.', false);
+      })
+      .vote(code, selected);
+  };
+</script>
+</body>
+</html>
