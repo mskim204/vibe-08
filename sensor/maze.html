@@ -63,7 +63,7 @@
 <div class="top">
   <a href="./">← 센서</a>
   <b id="title">🎮 미로 게임</b>
-  <span class="lv"><a href="?level=1" id="lv1">Lv1</a> <a href="?level=2" id="lv2">Lv2</a></span>
+  <span class="lv"><a href="?level=1" id="lv1">Lv1</a> <a href="?level=2" id="lv2">Lv2</a> <a href="?level=3" id="lv3">Lv3</a></span>
 </div>
 <div class="stats">
   <div class="stat"><div class="label">시간</div><div class="val" id="time">0.00</div></div>
@@ -82,6 +82,7 @@
 const LEVELS = {
   1: { cw: 7, ch: 10, seed: 8, holes: 0 },
   2: { cw: 9, ch: 13, seed: 21, holes: 9 },   // 더 크고, 구멍이 있다
+  3: { cw: 11, ch: 16, seed: 37, holes: 18 }, // 가장 크고, 구멍이 아주 많다
 };
 const LEVEL = LEVELS[new URLSearchParams(location.search).get('level')] ? +new URLSearchParams(location.search).get('level') : 1;
 document.getElementById('lv' + LEVEL).className = 'on';
@@ -150,20 +151,24 @@ function makeHoles(count, seed) {
   const path = new Set();
   for (let k = GOAL.x + ',' + GOAL.y; k; k = from[k]) path.add(k);
 
-  const spots = [];
+  const near = [], far = [];
   for (let y = 1; y < ROWS - 1; y++) {
     for (let x = 1; x < COLS - 1; x++) {
       if (grid[y][x] || path.has(x + ',' + y)) continue;
       if (Math.abs(x - 1) + Math.abs(y - 1) < 4) continue;   // 출발 바로 옆은 비워 두기
       const nearPath = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => path.has((x + dx) + ',' + (y + dy)));
-      if (nearPath) spots.push({ x, y });
+      (nearPath ? near : far).push({ x, y });
     }
   }
-  for (let i = spots.length - 1; i > 0; i--) {   // 섞기
-    const j = Math.floor(rand() * (i + 1));
-    [spots[i], spots[j]] = [spots[j], spots[i]];
-  }
-  return spots.slice(0, count);
+  const shuffle = a => {   // 섞기
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  // 길 옆 칸을 먼저 쓰고, 모자라면 다른 갈림길 칸에도 놓는다
+  return shuffle(near).concat(shuffle(far)).slice(0, count);
 }
 const holes = makeHoles(L.holes, L.seed + 100);
 
@@ -177,10 +182,16 @@ const startBtn = document.getElementById('start');
 const nextBtn = document.getElementById('next');
 const INTRO = LEVEL === 1
   ? '폰을 기울여서 🔴 공을 🏁 까지 굴려요!'
-  : '🕳️ 구멍에 빠지면 출발로 돌아가요! 살살 굴려요';
+  : LEVEL === 2
+  ? '🕳️ 구멍에 빠지면 출발로 돌아가요! 살살 굴려요'
+  : '🔥 마지막 레벨! 구멍이 아주 많아요. 천천히 굴려요';
 msgEl.textContent = INTRO;
 document.getElementById('title').textContent = '🎮 미로 레벨 ' + LEVEL;
 document.title = '미로 게임 레벨 ' + LEVEL;
+if (LEVELS[LEVEL + 1]) {
+  nextBtn.href = '?level=' + (LEVEL + 1);
+  nextBtn.textContent = '레벨 ' + (LEVEL + 1) + ' →';
+}
 let tile = 20;
 
 function resize() {
@@ -345,7 +356,7 @@ function finish(t) {
   }
   startBtn.textContent = '다시 하기';
   startBtn.style.display = '';
-  if (LEVEL === 1) nextBtn.style.display = '';
+  if (LEVELS[LEVEL + 1]) nextBtn.style.display = '';
 }
 
 function begin() {
