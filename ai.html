@@ -8,7 +8,14 @@
   // ===== 여기만 바꾸면 돼요 =====
   const SERVER_URL = "https://script.google.com/macros/s/AKfycbw5e2VaJzlwoMKoy-X5Tk4jKBKYJllw1LC99mnAsaYtsbB1A3YOgc-uUL1yd4CCuAUmvg/exec"; // 선생님 중계 서버 주소
   const CLASS_CODE = "vibe7128";   // 수업 코드
-  const SYSTEM_PROMPT = "너는 친절한 초등학생 선생님이야. 쉬운 말로 짧게 대답해 줘."; // AI 성격
+  // AI 성격 목록 (버튼으로 고를 수 있어요)
+  const PERSONAS = [
+    { name: "📚 공부 도우미",   system: "너는 친절한 공부 도우미야." },
+    { name: "🏃 체육 선생님",   system: "너는 엄격한 체육 선생님이야. 짧게 말해." },
+    { name: "📜 조선시대 선비", system: "너는 조선시대 선비야. 옛날 말투로 말해." },
+    { name: "🐱 고양이 인간",   system: "너는 고양이 말을 쓰는 고양이 인간이야." }
+  ];
+  let SYSTEM_PROMPT = PERSONAS[0].system; // 지금 고른 AI 성격 (처음엔 1번)
   // ==============================
 </script>
 <style>
@@ -20,11 +27,18 @@
   #answer { margin-top: 20px; min-height: 80px; padding: 14px; background: #fff; border-radius: 10px; font-size: 18px; line-height: 1.6; white-space: pre-wrap; }
   #thinking { display: none; margin-top: 14px; text-align: center; font-size: 18px; color: #4f46e5; }
   .error { color: #dc2626; }
+  #personas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  #personas button { margin-top: 0; padding: 12px 6px; font-size: 17px; color: #4f46e5; background: #fff; border: 2px solid #4f46e5; }
+  #personas button.selected { color: #fff; background: #4f46e5; }
+  #current { text-align: center; color: #555; margin-bottom: 14px; }
   a { display: block; text-align: center; margin-top: 20px; color: #4f46e5; }
 </style>
 </head>
 <body>
 <h1>🤖 AI에게 물어보기</h1>
+
+<div id="personas"></div>
+<div id="current"></div>
 
 <textarea id="question" placeholder="궁금한 것을 적어 보세요!"></textarea>
 <button id="send">보내기</button>
@@ -39,6 +53,23 @@
   const sendBtn = document.getElementById("send");
   const thinking = document.getElementById("thinking");
   const answerBox = document.getElementById("answer");
+  const personaBox = document.getElementById("personas");
+  const currentBox = document.getElementById("current");
+
+  // AI 성격 버튼 만들기
+  PERSONAS.forEach((p, i) => {
+    const btn = document.createElement("button");
+    btn.textContent = (i + 1) + ". " + p.name;
+    btn.addEventListener("click", () => choosePersona(i));
+    personaBox.appendChild(btn);
+  });
+
+  function choosePersona(i) {
+    SYSTEM_PROMPT = PERSONAS[i].system;
+    [...personaBox.children].forEach((b, j) => b.classList.toggle("selected", j === i));
+    currentBox.textContent = "지금 성격: " + PERSONAS[i].system;
+  }
+  choosePersona(0);
 
   async function ask() {
     const question = questionBox.value.trim();
