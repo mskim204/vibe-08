@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI에게 물어보기</title>
+<script>
+  // ===== 여기만 바꾸면 돼요 =====
+  const SERVER_URL = "https://script.google.com/macros/s/AKfycbw5e2VaJzlwoMKoy-X5Tk4jKBKYJllw1LC99mnAsaYtsbB1A3YOgc-uUL1yd4CCuAUmvg/exec"; // 선생님 중계 서버 주소
+  const CLASS_CODE = "여기에_수업코드";   // 수업 코드
+  const SYSTEM_PROMPT = "너는 친절한 초등학생 선생님이야. 쉬운 말로 짧게 대답해 줘."; // AI 성격
+  // ==============================
+</script>
+<style>
+  body { font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px 16px; background: #f5f5ff; }
+  h1 { text-align: center; }
+  textarea { width: 100%; box-sizing: border-box; height: 90px; font-size: 18px; padding: 10px; border: 2px solid #4f46e5; border-radius: 10px; }
+  button { width: 100%; margin-top: 10px; padding: 14px; font-size: 20px; font-weight: bold; color: #fff; background: #4f46e5; border: none; border-radius: 10px; cursor: pointer; }
+  button:disabled { background: #a5a3e8; cursor: wait; }
+  #answer { margin-top: 20px; min-height: 80px; padding: 14px; background: #fff; border-radius: 10px; font-size: 18px; line-height: 1.6; white-space: pre-wrap; }
+  #thinking { display: none; margin-top: 14px; text-align: center; font-size: 18px; color: #4f46e5; }
+  .error { color: #dc2626; }
+  a { display: block; text-align: center; margin-top: 20px; color: #4f46e5; }
+</style>
+</head>
+<body>
+<h1>🤖 AI에게 물어보기</h1>
+
+<textarea id="question" placeholder="궁금한 것을 적어 보세요!"></textarea>
+<button id="send">보내기</button>
+
+<div id="thinking">🤔 생각 중…</div>
+<div id="answer">여기에 답변이 나와요.</div>
+
+<a href="./">← 첫 화면으로</a>
+
+<script>
+  const questionBox = document.getElementById("question");
+  const sendBtn = document.getElementById("send");
+  const thinking = document.getElementById("thinking");
+  const answerBox = document.getElementById("answer");
+
+  async function ask() {
+    const question = questionBox.value.trim();
+    if (!question) {
+      answerBox.textContent = "질문을 먼저 적어 주세요!";
+      answerBox.className = "error";
+      return;
+    }
+
+    sendBtn.disabled = true;
+    thinking.style.display = "block";
+    answerBox.textContent = "";
+    answerBox.className = "";
+
+    try {
+      const res = await fetch(SERVER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          code: CLASS_CODE,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: question }]
+        })
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        answerBox.textContent = data.text;
+      } else {
+        answerBox.textContent = "⚠️ 오류: " + (data.error || "알 수 없는 오류");
+        answerBox.className = "error";
+      }
+    } catch (err) {
+      answerBox.textContent = "⚠️ 서버에 연결하지 못했어요: " + err.message;
+      answerBox.className = "error";
+    } finally {
+      sendBtn.disabled = false;
+      thinking.style.display = "none";
+    }
+  }
+
+  sendBtn.addEventListener("click", ask);
+  // Enter로 보내기 (Shift+Enter는 줄바꿈)
+  questionBox.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      ask();
+    }
+  });
+</script>
+</body>
+</html>
