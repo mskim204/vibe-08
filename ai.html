@@ -102,6 +102,7 @@
   choosePersona(0);
 
   async function ask() {
+    if (sendBtn.disabled) return; // 답을 기다리는 중이면 또 보내지 않기
     const question = questionBox.value.trim();
     if (!question) {
       questionBox.placeholder = "질문을 먼저 적어 주세요!";
@@ -112,6 +113,7 @@
     addBubble("user", question);
     questionBox.value = "";
     sendBtn.disabled = true;
+    newChatBtn.disabled = true; // 기다리는 동안 [새 대화]도 잠그기
     thinking.style.display = "block";
 
     // 앞 대화 + 새 질문을 순서대로, 최근 MAX_MESSAGES개까지만
@@ -132,7 +134,7 @@
       const data = await res.json();
 
       if (data.ok) {
-        addBubble("assistant", data.text);
+        addBubble("assistant", data.text.replace(/\*\*/g, "")); // 별표(**) 지우고 보여주기
         // 성공한 질문과 답만 기억에 저장
         history.push({ role: "user", content: question });
         history.push({ role: "assistant", content: data.text });
@@ -143,6 +145,7 @@
       addBubble("error", "⚠️ 서버에 연결하지 못했어요: " + err.message);
     } finally {
       sendBtn.disabled = false;
+      newChatBtn.disabled = false;
       thinking.style.display = "none";
     }
   }
@@ -150,7 +153,8 @@
   sendBtn.addEventListener("click", ask);
   // Enter로 보내기 (Shift+Enter는 줄바꿈)
   questionBox.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // 한글을 입력하는 도중(isComposing)에는 보내지 않기
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       ask();
     }
