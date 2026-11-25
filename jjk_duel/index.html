@@ -4155,7 +4155,11 @@ function aiAttack(s){
    ========================================================= */
 /* Apps Script(HtmlService)로 열렸으면 google.script.run 으로 서버와 직접 통신 */
 const GAS_RPC=!!(window.google&&google.script&&google.script.run);
-const NET={mode:null,lastErr:null,url:GAS_RPC?'rpc':LS.get('jjk_url',''),pid:LS.get('jjk_pid',null),name:LS.get('jjk_name',''),code:null,role:null,ver:0,off:0,deadline:0,pollT:null,pushing:false,dirty:false,claimed:false,lobbyT:null,active:false};
+/* GitHub Pages 등 사이트에서 게임을 열 때 쓰는 기본 온라인 대전 서버 주소 (Apps Script 웹 앱 …/exec).
+   비워 두면 [온라인 대전 → 서버 설정]에서 입력한 주소를 쓰고, 초대 QR에 담긴 서버 주소도 받아들입니다. */
+const JJK_SERVER_URL='';
+const isGasUrl=u=>/^https:\/\/script\.google(usercontent)?\.com\/[^\s"'<>]+$/.test(String(u||''));
+const NET={mode:null,lastErr:null,url:GAS_RPC?'rpc':(LS.get('jjk_url','')||(isGasUrl(JJK_SERVER_URL)?JJK_SERVER_URL:'')),pid:LS.get('jjk_pid',null),name:LS.get('jjk_name',''),code:null,role:null,ver:0,off:0,deadline:0,pollT:null,pushing:false,dirty:false,claimed:false,lobbyT:null,active:false};
 if(!NET.pid){NET.pid='p'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);LS.set('jjk_pid',NET.pid);}
 if(!NET.name){NET.name='주술사'+(100+rnd(900));LS.set('jjk_name',NET.name);}
 function rpc(body){return new Promise((res,rej)=>{google.script.run.withSuccessHandler(t=>{try{res(typeof t==='string'?JSON.parse(t):t)}catch(e){rej(e)}}).withFailureHandler(e=>rej(new Error((e&&e.message)||String(e)))).apiCall(JSON.stringify(body));});}
@@ -4249,7 +4253,7 @@ async function joinRoom(code){
 }
 /* 방장 대기 화면에 초대 QR을 바로 표시: 친구는 기본 카메라로 한 번 찍으면 자동 참가 */
 async function fillWaitQR(){const box=$('#waitQRBox');box.innerHTML='<div class="loading"></div>';
- try{const base=await shareBase();if(!NET.code||NET.role!=='host')return;const url=base+(base.includes('?')?'&':'?')+'room='+NET.code;box.innerHTML=qrSVG(url);
+ try{const base=await shareBase();if(!NET.code||NET.role!=='host')return;const url=inviteURL(base,NET.code);box.innerHTML=qrSVG(url);
   $('#waitMsg').textContent='친구가 휴대폰 카메라로 이 QR을 찍으면 바로 대전이 시작됩니다. (방 코드를 알려줘도 됩니다)';}catch(e){box.innerHTML='';}}
 async function quickInvite(){if(!NET.url){show('lobby');return;}show('lobby');$('#inRoom').value=`${NET.name}의 QR 대전`;await createRoom();}
 function openWait(host){$('#waitQRBox').innerHTML='';if(host)setTimeout(fillWaitQR,0);$('#waitModal').classList.add('on');$('#waitCode').textContent=NET.code;$('#waitTitle').textContent=host?'상대를 기다리는 중...':'대전 준비 중...';$('#waitMsg').textContent=host?'방 코드를 친구에게 공유하세요. 상대가 입장하면 자동으로 시작합니다.':'방장이 대전을 준비하고 있습니다. 잠시만 기다려주세요.';}
@@ -4459,6 +4463,7 @@ async function shareBase(){
  if(SHARE_BASE)return SHARE_BASE;
  if(GAS_RPC){let j=null;try{j=await api('info');}catch(e){}if(j&&j.ok&&j.url){SHARE_BASE=j.url;return SHARE_BASE;}
   throw new Error('서버 코드가 예전 버전입니다. 새 apps_script.gs를 Code.gs에 붙여넣고 [배포 관리 → 새 버전]으로 다시 배포하세요.');}
+ if(/^https?:$/.test(location.protocol))return location.origin+location.pathname;
  if(NET.url&&/^https:\/\//.test(NET.url))return NET.url;
  throw new Error('온라인 서버 URL이 연결되어 있어야 QR로 공유할 수 있습니다. [온라인 대전 → 서버 설정]에서 먼저 연결하세요.');
 }
@@ -4467,9 +4472,9 @@ async function openQR(withRoom){
  const room=withRoom&&NET.code?NET.code:null;
  $('#qrModal').classList.add('on');$('#qrTitle').textContent=room?`방 ${room} 초대 QR`:'게임 공유 QR';
  $('#qrBox').innerHTML='<div class="loading"></div>';$('#qrUrl').textContent='';$('#qrNote').textContent='';$('#qrCopy').style.display='none';$('#qrInvite').style.display=room?'none':'';
- try{const base=await shareBase();const url=room?base+(base.includes('?')?'&':'?')+'room='+room:base;
+ try{const base=await shareBase();const url=room?inviteURL(base,room):base;
   $('#qrBox').innerHTML=qrSVG(url);$('#qrUrl').textContent=url;$('#qrCopy').style.display='';$('#qrCopy').onclick=()=>copyText(url);
-  $('#qrNote').textContent=(room?'휴대폰 카메라로 찍으면 게임이 열리고 이 방에 바로 참가합니다.':'휴대폰 카메라로 찍으면 게임이 열립니다.')+(GAS_RPC?'':' (Apps Script에 게임 index 파일을 넣어 배포한 경우)');
+  $('#qrNote').textContent=(room?'휴대폰 카메라로 찍으면 게임이 열리고 이 방에 바로 참가합니다.':'휴대폰 카메라로 찍으면 게임이 열립니다.')+(location.protocol==='file:'?' (Apps Script에 게임 index 파일을 넣어 배포한 경우)':'');
  }catch(e){$('#qrBox').innerHTML='';$('#qrNote').textContent=e.message||String(e);}
 }
 $('#qrBtn').onclick=()=>{SFX.play('click');openQR(!!NET.code);};
@@ -4477,9 +4482,13 @@ $('#waitQr').onclick=()=>openQR(true);
 $('#qrClose').onclick=()=>$('#qrModal').classList.remove('on');
 $('#qrInvite').onclick=()=>{$('#qrModal').classList.remove('on');quickInvite();};
 /* QR로 열렸을 때: ?room=코드 가 있으면 그 방에 자동 참가 */
+/* 초대 주소: 게임 주소 + 방 코드 (+ 사이트에서 열었으면 서버 주소도 담아 친구 기기에 설정이 없어도 자동 연결) */
+function inviteURL(base,room){let u=base+(base.includes('?')?'&':'?')+'room='+room;if(!GAS_RPC&&/^https?:$/.test(location.protocol)&&isGasUrl(NET.url))u+='&srv='+encodeURIComponent(NET.url);return u;}
 function launchParams(cb){try{if(GAS_RPC&&google.script.url&&google.script.url.getLocation){google.script.url.getLocation(l=>cb((l&&l.parameter)||{}));return;}}catch(e){}
  try{cb(Object.fromEntries(new URLSearchParams(location.search)));}catch(e){cb({});}}
 launchParams(p=>{
+ /* 초대 QR로 열렸고 이 기기에 서버 설정이 없으면, QR에 담긴 서버 주소 사용 */
+ if(!GAS_RPC&&p.srv&&isGasUrl(p.srv)){NET.url=p.srv;if(!LS.get('jjk_url',''))LS.set('jjk_url',p.srv);}
  const code=String(p.room||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);if(code.length!==5)return;
  show('lobby');$('#inCode').value=code;toast(`QR 초대: 방 ${code}에 참가합니다`);setTimeout(()=>joinRoom(code),600);});
 
